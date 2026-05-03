@@ -1,0 +1,20 @@
+model:
+  embedding_model: BAAI/bge-small-en-v1.5
+  embedding_dim: 384
+  classifier:
+    hidden_layers: [256, 128, 64]
+    dropout: 0.3
+    learning_rate: 0.001
+    batch_size: 32
+    epochs: 50
+    early_stopping_patience: 5
+
+training:
+  train_split: 0.7
+  val_split: 0.15
+  test_split: 0.15
+  random_seed: 42
+
+mlflow:
+  experiment_name: ticket-classifier
+  tracking_uri: http://mlflow:5000
