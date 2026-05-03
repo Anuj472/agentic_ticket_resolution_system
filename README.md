@@ -11,100 +11,92 @@ A production-grade, human-in-the-loop AI ticketing system built with **FastAPI**
 - **Real-time Monitoring**: Full observability stack with Prometheus and Grafana.
 - **Automation Detection**: Identifies recurring issues for runbook automation.
 
-## 🏗️ Architecture Overview
+---
 
-The system is composed of several microservices coordinated via Docker Compose:
+## 🏗️ Architecture Deep Dive
+
+The system follows a modern microservices architecture designed for scalability and high availability:
 
 | Service | Technology | Purpose |
 | :--- | :--- | :--- |
-| **Frontend** | Next.js 15+ | Modern dashboard and live agent resolution UI. |
-| **Backend** | FastAPI | High-performance API and LangGraph orchestrator. |
-| **Agent State** | LangGraph | State management for the 6-node AI pipeline. |
-| **Vector DB** | Qdrant | Stores ticket embeddings for semantic RAG lookup. |
-| **Task Queue** | Celery + Redis | Handles background LLM processing and RAG indexing. |
-| **Primary DB** | PostgreSQL | Persists tickets, users, and resolution history. |
-| **Reverse Proxy** | Nginx | Unified entry point and API routing. |
-| **Monitoring** | Prometheus + Grafana | Performance metrics and pipeline health tracking. |
+| **Frontend** | Next.js 15+ | React-based dashboard with real-time pipeline visualization. |
+| **Backend** | FastAPI | Asynchronous Python API and LangGraph orchestrator. |
+| **Agent Engine** | LangGraph | State machine that manages the lifecycle of a ticket across AI nodes. |
+| **Vector DB** | Qdrant | High-performance vector search engine for RAG. Uses Cosine Similarity. |
+| **Embeddings** | BGE-small-en-v1.5 | Local transformer model for converting text to 384-dim vectors. |
+| **Task Queue** | Celery + Redis | Asynchronous processing of RAG indexing and complex LLM tasks. |
+| **Primary DB** | PostgreSQL | Relational database for structured ticket metadata and user accounts. |
+| **Reverse Proxy** | Nginx | Handles API routing, timeouts, and SSL termination. |
+| **Monitoring** | Prometheus | Scrapes metrics from FastAPI and Celery workers. |
+| **Visualization** | Grafana | Dashboard for tracking system health and AI performance. |
+
+---
+
+## 🛠️ The Agentic Pipeline (Node-by-Node)
+
+The heart of the system is the **LangGraph Pipeline**, which processes every ticket through 6 specialized nodes:
+
+### 1. 📥 Intake Node
+- **Function**: Sanity checks and ingestion.
+- **Details**: Validates the ticket description length, detects the language, and extracts basic metadata. It prepares the "Agent State" that will travel through the rest of the graph.
+
+### 2. 🧠 Classify Node
+- **Function**: Department & Priority Assignment.
+- **Details**: Uses GPT-4-nano to perform zero-shot classification into 6 categories: *Infrastructure, Application, Security, Database, Network, Access Management*. It also calculates an **Urgency Score** (0-1) based on the impact described.
+
+### 3. 🔍 RAG Lookup Node
+- **Function**: Semantic Context Retrieval.
+- **Details**: 
+  - Converts the ticket into a vector using the **BGE Embedding** model.
+  - Searches the **Knowledge Base** collection (Threshold: 0.6) for relevant articles.
+  - Searches the **Tickets** collection (Threshold: 0.7) for past resolved issues.
+  - Identifies if the issue is a **Repeat Issue** (found ≥ 2 similar past tickets).
+
+### 4. 🗺️ Routing Node
+- **Function**: Intelligence & Escalation Logic.
+- **Details**: Calculates a **Combined Confidence Score**. 
+  - **Auto-Resolve (>= 90%)**: If confidence is high and a past solution exists, the AI is allowed to proceed.
+  - **Human Escalation (< 90%)**: If the AI is uncertain, the ticket is flagged for `is_escalated = True`.
+  - **Automation Candidate**: If an issue has appeared ≥ 3 times, it triggers an "Automation Opportunity" flag.
+
+### 5. ⚡ Resolution Node
+- **Function**: AI Resolution Generation.
+- **Details**: Only runs if confidence is high. It pulls the retrieved RAG context (KB articles + past solutions) and uses GPT-4o-mini to generate a step-by-step resolution plan specifically tailored to the current user's problem.
+
+### 6. ✅ Close Node
+- **Function**: State Finalization.
+- **Details**: Transitions the ticket status, logs the final trace of the agent's reasoning, and persists all AI metadata (category, priority, confidence, and solution) back to the PostgreSQL database.
 
 ---
 
 ## 🚀 Getting Started (New Device)
 
-Follow these steps to get the system running locally on your machine.
-
 ### 1. Prerequisites
 - [Docker & Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- [OpenAI API Key](https://platform.openai.com/) (Required for the Agentic engine)
+- [OpenAI API Key](https://platform.openai.com/)
 
-### 2. Clone the Repository
+### 2. Installation
 ```bash
 git clone https://github.com/YOUR_USERNAME/agentic-ticket-system.git
 cd agentic-ticket-system
-```
-
-### 3. Environment Configuration
-Create a `.env` file in the root directory and add your OpenAI key:
-```env
-# AI Engine
-OPENAI_API_KEY=your_sk_...
-
-# Database (Default Docker settings)
-POSTGRES_USER=ticket_user
-POSTGRES_PASSWORD=ticket_pass
-POSTGRES_DB=ticket_db
-POSTGRES_HOST=postgres
-POSTGRES_PORT=5432
-DATABASE_URL=postgresql+asyncpg://ticket_user:ticket_pass@postgres:5432/ticket_db
-DATABASE_SYNC_URL=postgresql://ticket_user:ticket_pass@postgres:5432/ticket_db
-
-# Qdrant
-QDRANT_HOST=qdrant
-QDRANT_API_KEY=qdrant_secret
-```
-
-### 4. Launch the System
-Run the entire stack using Docker Compose:
-```bash
 docker-compose up -d --build
-```
-
-### 5. Apply Database Migrations
-Once the containers are healthy, initialize the database schema:
-```bash
 docker exec -it ticket_backend alembic upgrade head
 ```
 
-### 6. Access the Dashboards
-- **Frontend App**: [http://localhost:3000](http://localhost:3000)
-- **API Documentation**: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
-- **Monitoring (Grafana)**: [http://localhost:3000/grafana](http://localhost:3000/grafana)
-- **Task Monitor (Flower)**: [http://localhost:5555](http://localhost:5555)
-
----
-
-## 🛠️ The Agentic Pipeline (LangGraph)
-
-The system processes every ticket through a deterministic graph of 6 specialized nodes:
-
-1. **Intake**: Sanity checks and language detection.
-2. **Classify**: Categorizes into Infrastructure, Security, Network, etc., using GPT-4-nano.
-3. **RAG Lookup**: Queries Qdrant for similar historical tickets and relevant KB articles.
-4. **Route**: Calculates a combined confidence score (Embedding + LLM).
-   - `> 90%`: Auto-resolves or suggests an automated answer.
-   - `< 90%`: Escalates to Human Review.
-5. **Resolve**: Generates a step-by-step resolution plan using GPT-4o-mini.
-6. **Close**: Finalizes the state and prepares the ticket for human/automated closure.
+### 3. Access
+- **App**: [http://localhost:3000](http://localhost:3000)
+- **Monitoring**: [http://localhost:3001](http://localhost:3001) (Grafana) | [http://localhost:9090](http://localhost:9090) (Prometheus)
 
 ---
 
 ## 👤 Human-in-the-Loop Workflow
 
-When a ticket falls below the **90% confidence threshold**, it appears in the **Review Queue**. 
+When a ticket falls below the **90% confidence threshold**:
 - The AI resolution plan is **hidden** to prevent hallucination bias.
-- The human agent is provided with a dedicated space to input the manual resolution steps.
-- Once submitted, the system learns from this human input to improve future RAG lookups.
+- The human agent provides the manual resolution.
+- The system **learns** from this human input by automatically indexing the final solution into the Vector DB, improving future RAG lookups.
 
 ---
 
 ## 📄 License
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License.
