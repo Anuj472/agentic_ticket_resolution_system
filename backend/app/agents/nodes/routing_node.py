@@ -8,10 +8,10 @@ Decision tree (applied in order):
      Combined confidence = (embed_conf + llm_conf) / 2
 
   2. ROUTING DECISIONS:
-     ┌─ repeat_issue AND combined_confidence >= 0.95
+     ┌─ repeat_issue AND combined_confidence >= 0.90
      │    → "automated_answer"  (pull from past resolutions, no human needed)
      │
-     ├─ combined_confidence >= 0.95 AND NOT critical
+     ├─ combined_confidence >= 0.90 AND NOT critical
      │    → "auto_resolve"     (high-confidence AI solution suggested to user)
      │
      ├─ combined_confidence < 0.65 OR priority == "critical"
@@ -71,7 +71,9 @@ async def routing_node(state: TicketAgentState) -> TicketAgentState:
         if embed_conf == 0.0:
             combined_conf = llm_conf
         else:
-            combined_conf = round((embed_conf + llm_conf) / 2, 3)
+            combined_conf = (embed_conf + llm_conf) / 2
+
+        combined_conf = round(combined_conf, 2)
 
         state["routing_confidence"] = combined_conf
 
@@ -81,10 +83,10 @@ async def routing_node(state: TicketAgentState) -> TicketAgentState:
         # ── Step 4: Routing decision tree ────────────────────────────────────
         #
         #  Rule 1 — Critical priority always escalates (regardless of confidence)
-        #  Rule 2 — confidence >= 0.95
+        #  Rule 2 — confidence >= 0.90
         #             If repeated issue   → automated_answer  (pull from past resolutions)
         #             Else                → auto_resolve       (AI solution sent to user)
-        #  Rule 3 — confidence < 0.95    → human_review
+        #  Rule 3 — confidence < 0.90    → human_review
         #             Non-critical        → L1 (standard review queue)
         #             Critical (already caught by Rule 1)
         # ─────────────────────────────────────────────────────────────────────
@@ -95,8 +97,14 @@ async def routing_node(state: TicketAgentState) -> TicketAgentState:
                 f"Routed to {state['assigned_department']} for immediate human review."
             )
 
-        elif combined_conf >= CONFIDENCE_THRESHOLD:
-            if repeat_issue and similar_count > 0:
+        elif combined_conf >= CONFIDENCE_THRESHOLD or similar_count >= AUTOMATION_THRESHOLD:
+            if similar_count >= AUTOMATION_THRESHOLD:
+                route  = "automated_answer"
+                reason = (
+                    f"⚡ AUTOMATED RESPONSE — high repetition detected ({similar_count} similar tickets). "
+                    f"Generating answer from past resolutions. No human needed."
+                )
+            elif repeat_issue and similar_count > 0:
                 route  = "automated_answer"
                 reason = (
                     f"⚡ AUTOMATED RESPONSE — confidence {combined_conf:.2f} ≥ {CONFIDENCE_THRESHOLD} "

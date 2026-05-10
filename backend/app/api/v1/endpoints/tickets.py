@@ -2,6 +2,7 @@ import uuid, random, string
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
+from sqlalchemy.orm import noload
 from datetime import datetime, timezone
 import math
 from app.core.database import get_db
@@ -59,19 +60,32 @@ async def list_tickets(
     db:        AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Build a shared count query — avoids the hanging subquery() pattern
+    count_q = select(func.count(Ticket.id))
     q = select(Ticket)
+    
+    # DB stores enums as UPPERCASE (IN_PROGRESS, RESOLVED, etc.) - Enums now match
     if status:
+        count_q = count_q.where(Ticket.status == status.upper())
         q = q.where(Ticket.status == status.upper())
     if priority:
+        count_q = count_q.where(Ticket.priority == priority.upper())
         q = q.where(Ticket.priority == priority.upper())
     if category:
+        count_q = count_q.where(Ticket.category == category)
         q = q.where(Ticket.category == category)
-    count_result = await db.execute(select(func.count()).select_from(q.subquery()))
+        
+    count_result = await db.execute(count_q)
     total = count_result.scalar()
-    q = q.order_by(Ticket.created_at.desc())
+    logger.info(f"[API] list_tickets total: {total}")
+    
+    # noload('*') prevents async lazy-loading of relationships (hangs indefinitely in async)
+    q = q.options(noload("*")).order_by(Ticket.created_at.desc())
     q = q.offset((page - 1) * page_size).limit(page_size)
+    
     result = await db.execute(q)
     items = result.scalars().all()
+    
     return TicketListResponse(
         items=items,
         total=total,
@@ -85,7 +99,9 @@ async def get_ticket(
     db:        AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Ticket).where(Ticket.id == ticket_id))
+    result = await db.execute(
+        select(Ticket).options(noload("*")).where(Ticket.id == ticket_id)
+    )
     ticket = result.scalar_one_or_none()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")

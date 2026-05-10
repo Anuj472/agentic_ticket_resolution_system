@@ -9,10 +9,10 @@ Full agentic workflow:
                                               └──► close  (L1 hand-off)
 
 Routing decisions (from routing_node):
-  automated_answer  — repeat issue + combined confidence ≥ 0.95
-  auto_resolve      — combined confidence ≥ 0.95
+  automated_answer  — repeat issue + combined confidence ≥ 0.90
+  auto_resolve      — combined confidence ≥ 0.90
   escalate          — combined confidence < 0.65 OR critical priority
-  L1                — 0.65 ≤ confidence < 0.95 (human L1 review)
+  L1                — 0.65 ≤ confidence < 0.90 (human L1 review)
 """
 from langgraph.graph import StateGraph, END
 

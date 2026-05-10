@@ -19,8 +19,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Thresholds
-SIMILAR_TICKET_REPEAT_THRESHOLD = 2   # ≥ this many → mark as repeat issue
-SIMILAR_TICKET_AUTOMATION_THRESHOLD = 3  # ≥ this many → suggest automation
+SIMILAR_TICKET_REPEAT_THRESHOLD = 5   # ≥ this many → mark as repeat issue
+SIMILAR_TICKET_AUTOMATION_THRESHOLD = 5  # ≥ this many → suggest automation
 
 
 async def rag_node(state: TicketAgentState) -> TicketAgentState:

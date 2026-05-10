@@ -8,18 +8,18 @@ import enum
 
 
 class UserRole(str, enum.Enum):
-    END_USER   = "end_user"
-    L1_AGENT   = "l1_agent"
-    L2_AGENT   = "l2_agent"
-    L3_AGENT   = "l3_agent"
-    SUPERVISOR = "supervisor"
-    ADMIN      = "admin"
+    END_USER   = "END_USER"
+    L1_AGENT   = "L1_AGENT"
+    L2_AGENT   = "L2_AGENT"
+    L3_AGENT   = "L3_AGENT"
+    SUPERVISOR = "SUPERVISOR"
+    ADMIN      = "ADMIN"
 
 
 class UserStatus(str, enum.Enum):
-    ACTIVE   = "active"
-    INACTIVE = "inactive"
-    LOCKED   = "locked"
+    ACTIVE   = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    LOCKED   = "LOCKED"
 
 
 class User(Base):

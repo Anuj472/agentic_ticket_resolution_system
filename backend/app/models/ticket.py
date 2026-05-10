@@ -6,24 +6,24 @@ from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
 import enum
 class TicketStatus(str, enum.Enum):
-    NEW         = "new"
-    OPEN        = "open"
-    IN_PROGRESS = "in_progress"
-    PENDING     = "pending"
-    RESOLVED    = "resolved"
-    CLOSED      = "closed"
-    CANCELLED   = "cancelled"
+    NEW         = "NEW"
+    OPEN        = "OPEN"
+    IN_PROGRESS = "IN_PROGRESS"
+    PENDING     = "PENDING"
+    RESOLVED    = "RESOLVED"
+    CLOSED      = "CLOSED"
+    CANCELLED   = "CANCELLED"
 class TicketPriority(str, enum.Enum):
-    CRITICAL = "critical"
-    HIGH     = "high"
-    MEDIUM   = "medium"
-    LOW      = "low"
+    CRITICAL = "CRITICAL"
+    HIGH     = "HIGH"
+    MEDIUM   = "MEDIUM"
+    LOW      = "LOW"
 class TicketChannel(str, enum.Enum):
-    EMAIL = "email"
-    WEB   = "web"
-    SLACK = "slack"
-    API   = "api"
-    PHONE = "phone"
+    EMAIL = "EMAIL"
+    WEB   = "WEB"
+    SLACK = "SLACK"
+    API   = "API"
+    PHONE = "PHONE"
 class Ticket(Base):
     __tablename__ = "tickets"
     id: Mapped[uuid.UUID]      = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

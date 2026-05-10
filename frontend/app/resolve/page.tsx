@@ -56,15 +56,24 @@ const CONFIDENCE_THRESHOLD = 0.90;
 
 function getRouteInfo(t: QueueTicket) {
   const conf = t.routing_confidence ?? 0;
+  // Use a small epsilon or round to match backend (2 decimals)
+  const roundedConf = Math.round(conf * 100) / 100;
   const isEscalated = (t as any).is_escalated;
   const isResolved = t.status?.toLowerCase() === "resolved";
+
   if ((t.priority || "").toLowerCase() === "critical" || isEscalated)
     return { key: "escalate", label: "🚨 Escalate — critical priority", color: "red" };
-  if (conf >= CONFIDENCE_THRESHOLD && t.repeat_issue)
-    return { key: "automated_answer", label: "⚡ Automated Response — repeat issue", color: "purple" };
-  if (conf >= CONFIDENCE_THRESHOLD || isResolved)
+  
+  if (roundedConf >= CONFIDENCE_THRESHOLD || (t.similar_ticket_count ?? 0) >= 5) {
+    if (t.repeat_issue || (t.similar_ticket_count ?? 0) >= 5)
+      return { key: "automated_answer", label: "⚡ Automated Response — pattern detected", color: "purple" };
     return { key: "auto_resolve", label: "✅ Auto-resolve — AI confidence sufficient", color: "green" };
-  return { key: "L1", label: `👤 Human Review — confidence ${(conf * 100).toFixed(0)}% < 90%`, color: "yellow" };
+  }
+  
+  if (isResolved)
+    return { key: "auto_resolve", label: "✅ Resolved", color: "green" };
+
+  return { key: "L1", label: `👤 Human Review — confidence ${(conf * 100).toFixed(1)}% < 90%`, color: "yellow" };
 }
 
 function buildNodes(t: QueueTicket): AgentNode[] {
@@ -89,11 +98,11 @@ function buildNodes(t: QueueTicket): AgentNode[] {
     {
       id: "route", icon: "🗺️", label: "Route", model: "gpt-4.1-nano", phase: "idle",
       decision: route.label,
-      detail: `Confidence: ${(conf * 100).toFixed(0)}% ${conf >= CONFIDENCE_THRESHOLD ? "≥" : "<"} 90% threshold`,
+      detail: `Confidence: ${(conf * 100).toFixed(1)}% ${Math.round(conf * 100) / 100 >= CONFIDENCE_THRESHOLD ? "≥" : "<"} 90% threshold`,
     }
   ];
 
-  if (conf >= CONFIDENCE_THRESHOLD && !((t as any).is_escalated)) {
+  if (Math.round(conf * 100) / 100 >= CONFIDENCE_THRESHOLD && !((t as any).is_escalated)) {
     nodesList.push({
       id: "resolve", icon: "⚡", label: "Resolution", model: "gpt-4o-mini", phase: "idle",
       decision: t.repeat_issue ? "Automated response from past resolutions" : "Step-by-step resolution plan generated",
@@ -125,7 +134,7 @@ export default function ResolvePage() {
 
   async function loadQueue() {
     try {
-      const data = await apiCall<any>("GET", "/tickets/queue/unprocessed/?page_size=100");
+      const data = await apiCall<any>("GET", "/tickets/queue/unprocessed?page_size=100");
       setQueue(data.items ?? []);
       setTotal(data.total ?? 0);
       if ((data.total ?? 0) === 0) setPhase("empty");
@@ -135,7 +144,6 @@ export default function ResolvePage() {
   async function startNext(ticketOverride?: QueueTicket) {
     const ticket = ticketOverride ?? queue[0];
     if (!ticket) { loadQueue(); return; }
-    if (!ticketOverride) setQueue(q => q.slice(1));
     setCurrent(ticket);
     setError("");
 
@@ -152,14 +160,39 @@ export default function ResolvePage() {
       setNodes(n => n.map((x, j) => j === i ? { ...x, phase: "done" } : x));
       await delay(200);
     }
-    setPhase("reviewing");
+    
+    const conf = ticket.routing_confidence ?? 0;
+    const isEscalated = (ticket as any).is_escalated;
+    const roundedConf = Math.round(conf * 100) / 100;
+
+    // Auto-resolve if high confidence OR 5+ similar tickets (Automation Opportunity)
+    if ((roundedConf >= CONFIDENCE_THRESHOLD || (ticket.similar_ticket_count ?? 0) >= 5) && !isEscalated) {
+      setPhase("resolving");
+      await delay(1000); // Give user time to see the "Resolution" node
+      try {
+        await apiCall("POST", `/tickets/${ticket.id}/resolve`, { 
+          human_resolution: "System: Auto-resolved via high-confidence batch agent." 
+        });
+        setResolved(r => r + 1);
+        setNodes(n => n.map((x, idx) => idx === (n.length - 1)
+          ? { ...x, decision: "✅ Auto-resolved by system", detail: (ticket.similar_ticket_count ?? 0) >= 5 ? "Pattern detected (5+ tickets) — direct resolution applied" : "Confidence ≥ 90% — direct resolution applied" }
+          : x));
+        await delay(800);
+        advanceToNext();
+      } catch (e: any) {
+        setError("Auto-resolve failed: " + (e?.response?.data?.detail || e.message));
+        setPhase("reviewing");
+      }
+    } else {
+      setPhase("reviewing");
+    }
   }
 
   async function resolveTicket() {
     if (!current) return;
     setPhase("resolving");
     try {
-      await apiCall("POST", `/tickets/${current.id}/resolve/`, { human_resolution: humanResolution });
+      await apiCall("POST", `/tickets/${current.id}/resolve`, { human_resolution: humanResolution });
       setResolved(r => r + 1);
       // Mark close node as confirmed
       setNodes(n => n.map((x, i) => i === 5
@@ -180,16 +213,22 @@ export default function ResolvePage() {
   }
 
   function advanceToNext() {
-    if (queue.length > 0) {
-      const next = queue[0];
-      setQueue(q => q.slice(1));
-      startNext(next);
-    } else {
-      setCurrent(null);
-      setPhase("idle");
-      setHumanResolution("");
-      loadQueue();
-    }
+    setQueue(prev => {
+      const nextQueue = prev.slice(1);
+      if (nextQueue.length > 0) {
+        // Schedule next ticket after state update
+        setTimeout(() => startNext(nextQueue[0]), 0);
+      } else {
+        // Empty queue
+        setTimeout(() => {
+          setCurrent(null);
+          setPhase("idle");
+          setHumanResolution("");
+          loadQueue();
+        }, 0);
+      }
+      return nextQueue;
+    });
   }
 
   const remaining = Math.max(0, total - resolved - skipped);
@@ -341,7 +380,7 @@ export default function ResolvePage() {
               {/* Action buttons — shown only after animation */}
               {phase === "reviewing" && (
                 <div className="space-y-4">
-                  {((current.routing_confidence ?? 0) < CONFIDENCE_THRESHOLD || (current as any).is_escalated) && (
+                  {(Math.round((current.routing_confidence ?? 0) * 100) / 100 < CONFIDENCE_THRESHOLD || (current as any).is_escalated) && (
                     <div className="bg-gray-800/60 border border-gray-700 rounded-xl p-4">
                       <label className="block text-sm font-semibold text-gray-300 mb-2">
                         ✍️ Provide Human Resolution
@@ -427,9 +466,10 @@ export default function ResolvePage() {
               {/* Confidence + Routing Decision */}
               {(nodes[3]?.phase === "done") && (() => {
                 const conf = current.routing_confidence ?? 0;
+                const roundedConf = Math.round(conf * 100) / 100;
                 const pct  = Math.round(conf * 100);
                 const route = getRouteInfo(current);
-                const barColor = conf >= CONFIDENCE_THRESHOLD ? "bg-green-500" : conf >= 0.7 ? "bg-yellow-500" : "bg-red-500";
+                const barColor = roundedConf >= CONFIDENCE_THRESHOLD ? "bg-green-500" : roundedConf >= 0.7 ? "bg-yellow-500" : "bg-red-500";
                 const cardColor = route.color === "green" ? "bg-green-950/30 border-green-700/40"
                   : route.color === "purple" ? "bg-purple-950/30 border-purple-700/40"
                   : route.color === "red"    ? "bg-red-950/30 border-red-700/40"
@@ -455,8 +495,8 @@ export default function ResolvePage() {
                       </div>
                       <div className="flex justify-between text-[10px] text-gray-600 mt-1">
                         <span>0% (uncertain)</span>
-                        <span className={conf >= CONFIDENCE_THRESHOLD ? "text-green-500 font-semibold" : "text-yellow-500 font-semibold"}>
-                          {conf >= CONFIDENCE_THRESHOLD ? "✓ Above threshold → AI handles it" : "⚠ Below 90% → Human review required"}
+                        <span className={roundedConf >= CONFIDENCE_THRESHOLD ? "text-green-500 font-semibold" : "text-yellow-500 font-semibold"}>
+                          {roundedConf >= CONFIDENCE_THRESHOLD ? "✓ Above threshold → AI handles it" : "⚠ Below 90% → Human review required"}
                         </span>
                         <span>100% (certain)</span>
                       </div>
