@@ -58,6 +58,11 @@ class Ticket(Base):
     repeat_issue: Mapped[bool]        = mapped_column(Boolean, default=False)
     automation_candidate: Mapped[bool] = mapped_column(Boolean, default=False)
     similar_ticket_count: Mapped[int]  = mapped_column(default=0)
+    
+    # Omnichannel / Source fields
+    source: Mapped[str]                = mapped_column(String(50), default="api", index=True)
+    source_ref_id: Mapped[str]         = mapped_column(String(255), nullable=True, index=True)
+    source_metadata: Mapped[dict]      = mapped_column(JSON, default=dict)
     routing_confidence: Mapped[float]  = mapped_column(Float, nullable=True)
     routing_reason:     Mapped[str]    = mapped_column(Text, nullable=True)
     assigned_department: Mapped[str]   = mapped_column(Text, nullable=True)

@@ -3,6 +3,16 @@ from typing import Optional, List
 from datetime import datetime
 import uuid
 from app.models.ticket import TicketStatus, TicketPriority, TicketChannel
+
+class UniversalTicket(BaseModel):
+    title: str
+    description: str
+    source: str
+    source_ref_id: Optional[str] = None
+    submitter_email: Optional[str] = None
+    priority_hint: Optional[str] = None
+    metadata: dict = Field(default_factory=dict)
+    
 class TicketCreate(BaseModel):
     title:       str            = Field(..., min_length=3, max_length=500)
     description: str            = Field(..., min_length=10)

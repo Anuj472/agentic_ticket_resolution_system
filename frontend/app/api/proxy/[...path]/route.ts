@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND = "http://127.0.0.1:80/api/v1";
+const BACKEND = process.env.BACKEND_URL || "http://127.0.0.1:8000/api/v1";
 
 // Hop-by-hop headers — never forward to upstream
 const SKIP_HEADERS = new Set([
@@ -39,7 +39,7 @@ async function handler(req: NextRequest): Promise<NextResponse> {
       const location   = res.headers.get("location") ?? "";
       const redirectTo = location.startsWith("http")
         ? location
-        : `http://127.0.0.1:80${location}`;
+        : `http://127.0.0.1:8000${location}`;
       res = await fetch(redirectTo, { method: req.method, headers, body });
     }
   } catch (err: any) {
