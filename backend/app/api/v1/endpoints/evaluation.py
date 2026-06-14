@@ -5,6 +5,7 @@ POST /evaluation/run     — trigger full eval in background (~60–90s)
 GET  /evaluation/results — return latest cached results (404 until ready)
 GET  /evaluation/samples — return the 30 ground-truth test tickets
 """
+
 from __future__ import annotations
 import asyncio
 import logging
@@ -34,6 +35,7 @@ _running: bool = False
 
 # ── Evaluation runner ─────────────────────────────────────────────────────────
 
+
 async def _run_full_evaluation() -> None:
     """
     Full evaluation pipeline:
@@ -57,10 +59,11 @@ async def _run_full_evaluation() -> None:
         # ── Step 2: Generate solutions for semantic eval ──────────────────
         logger.info("[Eval] Step 2/3 — generating solutions (10 tickets)")
         sample = GROUND_TRUTH[:10]
-        solutions = list(await asyncio.gather(*[
-            generate_solution(t["title"], t["description"], [])
-            for t in sample
-        ]))
+        solutions = list(
+            await asyncio.gather(
+                *[generate_solution(t["title"], t["description"], []) for t in sample]
+            )
+        )
         references = [t["description"] for t in sample]
         sem = await evaluate_semantic_similarity(solutions, references)
         logger.info(f"[Eval] Semantic similarity done — mean={sem.get('mean')}")
@@ -78,10 +81,10 @@ async def _run_full_evaluation() -> None:
             "semantic_similarity": sem,
             "llm_judge": judge,
             "summary": {
-                "accuracy_pct":        clf["accuracy_pct"],
-                "macro_f1":            clf["macro_f1"],
+                "accuracy_pct": clf["accuracy_pct"],
+                "macro_f1": clf["macro_f1"],
                 "semantic_similarity": sem.get("mean", 0.0),
-                "llm_judge_overall":   judge.get("mean_overall", 0.0),
+                "llm_judge_overall": judge.get("mean_overall", 0.0),
             },
         }
         logger.info(
@@ -98,10 +101,11 @@ async def _run_full_evaluation() -> None:
             "error": tb,
         }
     finally:
-        _running = False   # always release the lock
+        _running = False  # always release the lock
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
 
 @router.post("/run")
 async def run_evaluation(
@@ -114,7 +118,10 @@ async def run_evaluation(
     """
     global _running
     if _running:
-        raise HTTPException(status_code=409, detail="Evaluation already in progress — check /evaluation/results in ~90s.")
+        raise HTTPException(
+            status_code=409,
+            detail="Evaluation already in progress — check /evaluation/results in ~90s.",
+        )
     _running = True
     background_tasks.add_task(_run_full_evaluation)
     return {

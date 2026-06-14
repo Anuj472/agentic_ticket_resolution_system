@@ -2,6 +2,7 @@
 Creates MinIO buckets.
 Usage: make init-minio
 """
+
 from minio import Minio
 from app.core.config import settings
 

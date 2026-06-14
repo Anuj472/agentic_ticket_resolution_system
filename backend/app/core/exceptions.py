@@ -15,8 +15,12 @@ class EmbeddingError(Exception):
 
 
 async def ticket_not_found_handler(request: Request, exc: TicketNotFoundError):
-    return JSONResponse(status_code=404, content={"detail": str(exc) or "Ticket not found"})
+    return JSONResponse(
+        status_code=404, content={"detail": str(exc) or "Ticket not found"}
+    )
 
 
 async def duplicate_ticket_handler(request: Request, exc: DuplicateTicketError):
-    return JSONResponse(status_code=409, content={"detail": str(exc) or "Duplicate ticket"})
+    return JSONResponse(
+        status_code=409, content={"detail": str(exc) or "Duplicate ticket"}
+    )

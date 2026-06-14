@@ -15,25 +15,27 @@ from app.workers.tasks.ticket_tasks import process_new_ticket
 
 router = APIRouter()
 
+
 def _gen_ticket_number() -> str:
-    suffix = ''.join(random.choices(string.digits, k=6))
+    suffix = "".join(random.choices(string.digits, k=6))
     return f"TKT-{suffix}"
+
 
 async def _get_or_create_guest_user(db: AsyncSession, email: str, source: str) -> User:
     # Check if user exists
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
-    
+
     if user:
         return user
-        
+
     # Create guest user
     guest_uuid = str(uuid.uuid4())[:8]
     user = User(
         employee_id=f"guest_{source}_{guest_uuid}",
         email=email,
         full_name=f"Guest User ({source})",
-        hashed_password=hash_password(str(uuid.uuid4())), # Random unguessable password
+        hashed_password=hash_password(str(uuid.uuid4())),  # Random unguessable password
         role=UserRole.END_USER,
         status=UserStatus.ACTIVE,
         is_agent=False,
@@ -43,8 +45,11 @@ async def _get_or_create_guest_user(db: AsyncSession, email: str, source: str) -
     await db.refresh(user)
     return user
 
+
 @router.post("/webhooks/{source}", status_code=status.HTTP_202_ACCEPTED)
-async def ingest_ticket(source: str, request: Request, db: AsyncSession = Depends(get_db)):
+async def ingest_ticket(
+    source: str, request: Request, db: AsyncSession = Depends(get_db)
+):
     """
     Universal ingestion endpoint for external webhooks.
     """
@@ -52,21 +57,26 @@ async def ingest_ticket(source: str, request: Request, db: AsyncSession = Depend
         payload = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
-        
+
     try:
         adapter = get_adapter(source)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-        
+
     try:
         universal_ticket = adapter.normalize(payload)
     except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Failed to normalize payload: {str(e)}")
-        
+        raise HTTPException(
+            status_code=422, detail=f"Failed to normalize payload: {str(e)}"
+        )
+
     # Resolve submitter
-    email = universal_ticket.submitter_email or f"anonymous_{source}_{str(uuid.uuid4())[:8]}@local.guest"
+    email = (
+        universal_ticket.submitter_email
+        or f"anonymous_{source}_{str(uuid.uuid4())[:8]}@local.guest"
+    )
     submitter = await _get_or_create_guest_user(db, email, source)
-    
+
     # Map source to channel if possible
     source_lower = source.lower()
     if source_lower == "slack":
@@ -93,23 +103,23 @@ async def ingest_ticket(source: str, request: Request, db: AsyncSession = Depend
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    
+
     db.add(ticket)
     await db.commit()
     await db.refresh(ticket)
-    
+
     # Dispatch to Celery
     try:
         process_new_ticket.apply_async(
             args=[str(ticket.id)],
             queue="ticket_processing",
         )
-    except Exception as e:
-        pass # Log error in production
-        
+    except Exception:
+        pass  # Log error in production
+
     return {
         "status": "accepted",
         "ticket_id": str(ticket.id),
         "ticket_number": ticket.ticket_number,
-        "source": source
+        "source": source,
     }

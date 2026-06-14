@@ -1,21 +1,8 @@
 "use client";
 import { useState } from "react";
-import axios from "axios";
-const API = "/api/proxy";
+import { api } from "@/lib/api";
 const NODES = ["📥 Intake","🧠 Classify","🔍 RAG Lookup","🗺️ Route","⚡ Resolve","✅ Close"];
 
-// Shared token cache — avoids re-login on every demo run
-async function getToken(): Promise<string> {
-  const cached = sessionStorage.getItem("auth_token");
-  if (cached) return cached;
-  const r = await axios.post(`${API}/auth/login`, {
-    email: "admin@company.com",
-    password: "Admin@1234",
-  });
-  const token: string = r.data.access_token;
-  sessionStorage.setItem("auth_token", token);
-  return token;
-}
 interface Step { node: string; status: "idle"|"running"|"done"|"error"; data?: any; ms?: number; }
 export default function DemoPage() {
   const [title, setTitle]   = useState("VPN not working after Windows update");
@@ -28,19 +15,10 @@ export default function DemoPage() {
     setResult(null);
     const fresh = NODES.map(n => ({ node: n, status: "idle" as const }));
     setSteps(fresh);
-    let token: string;
-    try {
-      token = await getToken();
-    } catch (e: any) {
-      sessionStorage.removeItem("auth_token");
-      token = await getToken();
-    }
-    const h = { Authorization: `Bearer ${token}` };
     // Step 0: Intake
     setSteps(s => s.map((x,i) => i===0 ? {...x, status:"running"} : x));
     const t0 = Date.now();
-    const ticket = (await axios.post(`${API}/tickets`,
-      { title, description: desc, priority: "high" }, { headers: h })).data;
+    const ticket = await api.post("/tickets", { title, description: desc, priority: "HIGH" });
     setSteps(s => s.map((x,i) => i===0 ? {...x, status:"done", data: ticket.ticket_number, ms: Date.now()-t0} : x));
     await delay(600);
     // Step 1: Classify (poll until category set)
@@ -49,7 +27,7 @@ export default function DemoPage() {
     let classified: any = ticket;
     for (let attempt = 0; attempt < 30; attempt++) {
       await delay(3000);
-      classified = (await axios.get(`${API}/tickets/${ticket.id}`, { headers: h })).data;
+      classified = await api.get(`/tickets/${ticket.id}`);
       if (classified.category) break;
     }
     setSteps(s => s.map((x,i) => i===1 ? {...x, status:"done",

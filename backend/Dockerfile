@@ -1,4 +1,4 @@
-﻿FROM python:3.12-slim
+FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential curl libpq-dev && rm -rf /var/lib/apt/lists/*
@@ -9,9 +9,7 @@ ENV SENTENCE_TRANSFORMERS_HOME=/tmp/hf_cache
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    python -m spacy download en_core_web_sm
+RUN pip install --no-cache-dir --default-timeout=1000 -r requirements.txt
 
 COPY . .
 

@@ -1,9 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import axios from "axios";
+import { api } from "@/lib/api";
 import Link from "next/link";
 
-const API = "/api/proxy";
 const PSIZE = 20;
 
 const PRIORITY_COLOR: Record<string, string> = {
@@ -19,34 +18,6 @@ const STATUS_COLOR: Record<string, string> = {
   closed:      "bg-gray-700 text-gray-300",
 };
 
-// BUG-07 FIX: Cache token in sessionStorage — only login once per browser session
-async function getToken(): Promise<string> {
-  const cached = sessionStorage.getItem("auth_token");
-  if (cached) return cached;
-  const r = await axios.post(`${API}/auth/login`, {
-    email: "admin@company.com",
-    password: "Admin@1234",
-  });
-  const token: string = r.data.access_token;
-  sessionStorage.setItem("auth_token", token);
-  return token;
-}
-
-async function fetchWithAuth(url: string) {
-  const token = await getToken();
-  try {
-    return await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
-  } catch (e: any) {
-    // On 401 clear cache and retry once with a fresh token
-    if (e?.response?.status === 401) {
-      sessionStorage.removeItem("auth_token");
-      const freshToken = await getToken();
-      return axios.get(url, { headers: { Authorization: `Bearer ${freshToken}` } });
-    }
-    throw e;
-  }
-}
-
 export default function TicketsPage() {
   const [tickets, setTickets] = useState<any[]>([]);
   const [total,   setTotal]   = useState(0);
@@ -59,8 +30,8 @@ export default function TicketsPage() {
     if (filter.priority) params.append("priority", filter.priority);
     if (filter.category) params.append("category", filter.category);
 
-    fetchWithAuth(`${API}/tickets/?${params}`)
-      .then(r => { setTickets(r.data.items); setTotal(r.data.total); })
+    api.get(`/tickets?${params}`)
+      .then(r => { setTickets(r.items); setTotal(r.total); })
       .catch(e => setError(e?.response?.data?.detail || e.message));
   }, [page, filter]);
 
@@ -95,7 +66,7 @@ export default function TicketsPage() {
               className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white"
             >
               <option value="">All {key}s</option>
-              {opts.map(o => <option key={o} value={o.toLowerCase()}>{o}</option>)}
+              {opts.map(o => <option key={o} value={key === "priority" ? o.toLowerCase() : o}>{o}</option>)}
             </select>
           ))}
         </div>

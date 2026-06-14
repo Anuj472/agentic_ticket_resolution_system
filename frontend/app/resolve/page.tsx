@@ -1,32 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import axios from "axios";
-
-const API = "/api/proxy";
-
-async function getToken(): Promise<string> {
-  const cached = sessionStorage.getItem("auth_token");
-  if (cached) return cached;
-  const r = await axios.post(`${API}/auth/login`, { email: "admin@company.com", password: "Admin@1234" });
-  const token: string = r.data.access_token;
-  sessionStorage.setItem("auth_token", token);
-  return token;
-}
-async function apiCall<T>(method: string, path: string, body?: any): Promise<T> {
-  const token = await getToken();
-  try {
-    const r = await axios({ method, url: `${API}${path}`, data: body, headers: { Authorization: `Bearer ${token}` } });
-    return r.data;
-  } catch (e: any) {
-    if (e?.response?.status === 401) {
-      sessionStorage.removeItem("auth_token");
-      const t2 = await getToken();
-      const r2 = await axios({ method, url: `${API}${path}`, data: body, headers: { Authorization: `Bearer ${t2}` } });
-      return r2.data;
-    }
-    throw e;
-  }
-}
+import { apiCall } from "@/lib/api";
 
 interface QueueTicket {
   id: string; ticket_number: string; title: string; description: string;

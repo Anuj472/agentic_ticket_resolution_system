@@ -8,7 +8,11 @@ async def get_redis() -> aioredis.Redis:
     global redis_client
     if redis_client is None:
         redis_client = await aioredis.from_url(
-            settings.REDIS_URL, encoding="utf-8", decode_responses=True
+            settings.REDIS_URL,
+            encoding="utf-8",
+            decode_responses=True,
+            socket_timeout=5.0,
+            socket_connect_timeout=5.0,
         )
     return redis_client
 

@@ -4,6 +4,7 @@ Embedding Service
 - BGE-small-en-v1.5 sentence encoder (runs locally, zero API cost)
 - Centroid-based embedding classifier for the 6 IT ticket categories
 """
+
 from __future__ import annotations
 import logging
 import numpy as np
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 # ── Model ─────────────────────────────────────────────────────────────────────
 _model: SentenceTransformer | None = None
+
 
 def get_model() -> SentenceTransformer:
     global _model
@@ -92,14 +94,11 @@ def embedding_classify(title: str, description: str) -> dict:
         }
     """
     text = f"{title}. {description[:400]}"
-    vec  = np.array(encode(text))
+    vec = np.array(encode(text))
     centroids = _get_centroids()
 
-    scores = {
-        cat: float(np.dot(vec, centroid))
-        for cat, centroid in centroids.items()
-    }
-    best_cat  = max(scores, key=scores.__getitem__)
+    scores = {cat: float(np.dot(vec, centroid)) for cat, centroid in centroids.items()}
+    best_cat = max(scores, key=scores.__getitem__)
     best_conf = scores[best_cat]
 
     logger.info(f"[Embed] Classified → {best_cat} (conf={best_conf:.3f})")

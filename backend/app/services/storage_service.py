@@ -1,7 +1,7 @@
 from minio import Minio
-from minio.error import S3Error
 from app.core.config import settings
-import logging, uuid
+import logging
+import uuid
 from datetime import timedelta
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,7 @@ def upload_file(file_data: bytes, filename: str, content_type: str) -> str:
     client = get_minio()
     object_key = f"{uuid.uuid4()}/{filename}"
     import io
+
     client.put_object(
         settings.MINIO_BUCKET_ATTACHMENTS,
         object_key,

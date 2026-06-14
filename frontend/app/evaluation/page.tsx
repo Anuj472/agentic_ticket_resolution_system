@@ -1,21 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import axios from "axios";
-
-const API = "/api/proxy";
-
-async function getToken(): Promise<string> {
-  const t = sessionStorage.getItem("auth_token");
-  if (t) return t;
-  const r = await axios.post(`${API}/auth/login`, { email: "admin@company.com", password: "Admin@1234" });
-  sessionStorage.setItem("auth_token", r.data.access_token);
-  return r.data.access_token;
-}
-async function apiCall<T>(method: string, path: string): Promise<T> {
-  const token = await getToken();
-  const r = await axios({ method, url: `${API}${path}`, headers: { Authorization: `Bearer ${token}` } });
-  return r.data;
-}
+import { apiCall } from "@/lib/api";
 
 interface EvalResults {
   run_at: string;

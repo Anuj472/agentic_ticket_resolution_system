@@ -17,4 +17,11 @@ ml/data/processed/
 ml/data/embeddings/
 *.pt
 *.onnx
-monitoring/grafana/grafana.db
+
+# Debug and local artifacts
+backend/login.json
+backend/tickets_resp.json
+backend/celerybeat-schedule
+celerybeat-schedule
+login.json
+tickets_resp.json

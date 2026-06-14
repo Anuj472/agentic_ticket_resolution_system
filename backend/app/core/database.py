@@ -11,7 +11,7 @@ engine = create_async_engine(
     pool_timeout=30,
     connect_args={
         "server_settings": {"statement_timeout": "30000"},  # 30 s max per query
-        "command_timeout": 35,                              # asyncpg connection timeout
+        "command_timeout": 35,  # asyncpg connection timeout
     },
 )
 

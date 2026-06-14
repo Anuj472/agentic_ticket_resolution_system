@@ -1,15 +1,54 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_db
-from app.core.security import verify_password, hash_password, create_access_token, create_refresh_token
+from app.core.security import (
+    verify_password,
+    hash_password,
+    create_access_token,
+    create_refresh_token,
+)
 from app.models.user import User, UserStatus
 from app.schemas.user import UserCreate, UserLogin, TokenResponse, UserResponse
+from app.core.redis import get_redis
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-@router.post("/register", response_model=UserResponse, status_code=201)
+async def check_rate_limit(request: Request):
+    """Simple Redis-backed rate limiter for auth endpoints."""
+    try:
+        redis = await get_redis()
+        ip = request.client.host if request.client else "127.0.0.1"
+        key = f"rate_limit:login:{ip}"
+
+        count = await redis.get(key)
+        if count and int(count) >= 10:  # Allow 10 login requests per minute
+            logger.warning(f"[AUTH] Rate limit breached for IP {ip}")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many login attempts. Please try again in a minute.",
+            )
+
+        pipe = redis.pipeline()
+        await pipe.incr(key)
+        await pipe.expire(key, 60)
+        await pipe.execute()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[AUTH] Rate limiter error: {e}")
+
+
+@router.post(
+    "/register",
+    response_model=UserResponse,
+    status_code=201,
+    dependencies=[Depends(check_rate_limit)],
+)
 async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == payload.email))
     if result.scalar_one_or_none():
@@ -28,12 +67,16 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)):
     return user
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post(
+    "/login", response_model=TokenResponse, dependencies=[Depends(check_rate_limit)]
+)
 async def login(payload: UserLogin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
     if not user or not verify_password(payload.password, user.hashed_password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
+        )
     if user.status != UserStatus.ACTIVE:
         raise HTTPException(status_code=403, detail="Account is not active")
     token_data = {"sub": str(user.id), "role": user.role.value}

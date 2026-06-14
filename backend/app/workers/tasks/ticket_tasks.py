@@ -5,6 +5,7 @@ Bridges sync Celery with the async LangGraph ticket_agent.
 The full 6-node agentic pipeline (intake→classify→rag→route→resolve/escalate→close)
 runs via ticket_agent.ainvoke(), then DB is updated from the final state.
 """
+
 from __future__ import annotations
 import asyncio
 import logging
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 # ── Helper ─────────────────────────────────────────────────────────────────────
 
+
 def _parse_priority(raw: str | None) -> TicketPriority:
     """Safely coerce a string to TicketPriority enum."""
     if not raw:
@@ -32,6 +34,7 @@ def _parse_priority(raw: str | None) -> TicketPriority:
 
 
 # ── Core async pipeline ────────────────────────────────────────────────────────
+
 
 async def _run_agent_pipeline(ticket_id: str) -> None:
     """Fetch ticket, run LangGraph agent, write results back to DB."""
@@ -47,49 +50,51 @@ async def _run_agent_pipeline(ticket_id: str) -> None:
 
         # ── 2. Build initial state ───────────────────────────────────────
         initial_state: TicketAgentState = {
-            "ticket_id":   str(ticket.id),
-            "title":       ticket.title,
+            "ticket_id": str(ticket.id),
+            "title": ticket.title,
             "description": ticket.description,
             # Classification
-            "category":             None,
-            "sub_category":         None,
-            "priority":             None,
-            "sentiment":            None,
-            "urgency_score":        None,
-            "ai_summary":           None,
-            "keywords":             [],
-            "embedding_category":   None,
+            "category": None,
+            "sub_category": None,
+            "priority": None,
+            "sentiment": None,
+            "urgency_score": None,
+            "ai_summary": None,
+            "keywords": [],
+            "embedding_category": None,
             "embedding_confidence": None,
-            "category_confidence":  None,
+            "category_confidence": None,
             # RAG
-            "kb_results":           [],
-            "similar_tickets":      [],
+            "kb_results": [],
+            "similar_tickets": [],
             "similar_ticket_count": 0,
             # Routing
-            "routing_decision":    None,
-            "routing_reason":      None,
-            "routing_confidence":  None,
+            "routing_decision": None,
+            "routing_reason": None,
+            "routing_confidence": None,
             "assigned_department": None,
-            "suggest_automation":  False,
+            "suggest_automation": False,
             "automation_candidate": False,
-            "automation_reason":   None,
-            "repeat_issue":        False,
+            "automation_reason": None,
+            "repeat_issue": False,
             # Resolution
             "suggested_solution": None,
             # Escalation
-            "is_escalated":      False,
+            "is_escalated": False,
             "escalation_reason": None,
             # Audit
             "assigned_agent_id": None,
-            "steps":             [],
-            "error":             None,
+            "steps": [],
+            "error": None,
         }
 
         # ── 3. Run LangGraph agent ───────────────────────────────────────
         try:
             final_state: TicketAgentState = await ticket_agent.ainvoke(initial_state)
         except Exception as e:
-            logger.error(f"[TASK] Agent pipeline failed for {ticket.ticket_number}: {e}")
+            logger.error(
+                f"[TASK] Agent pipeline failed for {ticket.ticket_number}: {e}"
+            )
             final_state = {**initial_state, "error": str(e)}
 
         # ── 4. Write results back to DB ──────────────────────────────────
@@ -97,16 +102,16 @@ async def _run_agent_pipeline(ticket_id: str) -> None:
 
         # Classification
         if final_state.get("category"):
-            ticket.category             = final_state["category"]
-            ticket.sub_category         = final_state.get("sub_category")
-            ticket.category_confidence  = final_state.get("category_confidence")
-            ticket.urgency_score        = final_state.get("urgency_score")
-            ticket.sentiment_score      = final_state.get("sentiment_score")
-            ticket.ai_summary           = final_state.get("ai_summary")
+            ticket.category = final_state["category"]
+            ticket.sub_category = final_state.get("sub_category")
+            ticket.category_confidence = final_state.get("category_confidence")
+            ticket.urgency_score = final_state.get("urgency_score")
+            ticket.sentiment_score = final_state.get("sentiment_score")
+            ticket.ai_summary = final_state.get("ai_summary")
 
         # Priority — only update if AI is more confident
         if final_state.get("priority"):
-            ticket.priority          = _parse_priority(final_state["priority"])
+            ticket.priority = _parse_priority(final_state["priority"])
             ticket.predicted_priority = final_state["priority"]
 
         # RAG
@@ -117,21 +122,21 @@ async def _run_agent_pipeline(ticket_id: str) -> None:
             ticket.ai_suggested_solution = final_state["suggested_solution"]
 
         # Routing signals
-        ticket.routing_confidence    = final_state.get("routing_confidence")
-        ticket.routing_reason        = final_state.get("routing_reason")
-        ticket.assigned_department   = final_state.get("assigned_department")
-        ticket.repeat_issue          = final_state.get("repeat_issue", False)
-        ticket.automation_candidate  = final_state.get("automation_candidate", False)
-        ticket.similar_ticket_count  = final_state.get("similar_ticket_count", 0)
+        ticket.routing_confidence = final_state.get("routing_confidence")
+        ticket.routing_reason = final_state.get("routing_reason")
+        ticket.assigned_department = final_state.get("assigned_department")
+        ticket.repeat_issue = final_state.get("repeat_issue", False)
+        ticket.automation_candidate = final_state.get("automation_candidate", False)
+        ticket.similar_ticket_count = final_state.get("similar_ticket_count", 0)
 
         # Escalation
-        ticket.is_escalated      = final_state.get("is_escalated", False)
+        ticket.is_escalated = final_state.get("is_escalated", False)
         ticket.escalation_reason = final_state.get("escalation_reason")
 
         # Status & timestamps
         routing = final_state.get("routing_decision", "L1")
         if routing in ("auto_resolve", "automated_answer"):
-            ticket.status      = TicketStatus.RESOLVED
+            ticket.status = TicketStatus.RESOLVED
             ticket.resolved_at = now
         elif routing == "escalate":
             ticket.status = TicketStatus.IN_PROGRESS
@@ -149,6 +154,7 @@ async def _run_agent_pipeline(ticket_id: str) -> None:
 
 
 # ── Celery task ────────────────────────────────────────────────────────────────
+
 
 @shared_task(
     name="ticket_tasks.process_new_ticket",

@@ -16,7 +16,9 @@ async def get_me(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/", response_model=list[UserResponse])
-async def list_users(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+async def list_users(
+    db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)
+):
     result = await db.execute(select(User).order_by(User.created_at.desc()))
     return result.scalars().all()
 

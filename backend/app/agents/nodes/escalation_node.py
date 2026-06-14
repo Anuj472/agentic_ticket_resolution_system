@@ -4,6 +4,7 @@ Escalation Node (Node 6 — conditional)
 Reached when routing_decision == "escalate".
 Sets is_escalated=True and writes a human-readable escalation reason.
 """
+
 from app.agents.state import TicketAgentState
 import logging
 
@@ -15,9 +16,9 @@ async def escalation_node(state: TicketAgentState) -> TicketAgentState:
     state["is_escalated"] = True
 
     # Build reason from available context
-    priority   = (state.get("priority") or "unknown").upper()
+    priority = (state.get("priority") or "unknown").upper()
     confidence = state.get("routing_confidence")
-    category   = state.get("category", "Unknown")
+    category = state.get("category", "Unknown")
 
     if confidence is not None and confidence < 0.65:
         reason = (
@@ -38,5 +39,7 @@ async def escalation_node(state: TicketAgentState) -> TicketAgentState:
 
     state["escalation_reason"] = reason
     state["steps"].append(f"escalated: {reason[:80]}...")
-    logger.info(f"[NODE] escalation_node: ticket {state['ticket_id']} escalated — {reason[:60]}")
+    logger.info(
+        f"[NODE] escalation_node: ticket {state['ticket_id']} escalated — {reason[:60]}"
+    )
     return state

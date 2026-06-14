@@ -22,6 +22,7 @@ Decision tree (applied in order):
 
   3. AUTOMATION FLAG — if similar_ticket_count >= 3, flag for runbook automation
 """
+
 from __future__ import annotations
 import logging
 
@@ -31,40 +32,42 @@ from app.services.llm_service import routing_decision
 logger = logging.getLogger(__name__)
 
 DEPARTMENT_MAP = {
-    "Infrastructure":    "Infrastructure & Cloud Team",
-    "Application":       "Application Support Team",
-    "Security":          "Security Operations Centre",
-    "Database":          "Database Administration Team",
-    "Network":           "Network Operations Centre",
+    "Infrastructure": "Infrastructure & Cloud Team",
+    "Application": "Application Support Team",
+    "Security": "Security Operations Centre",
+    "Database": "Database Administration Team",
+    "Network": "Network Operations Centre",
     "Access Management": "Identity & Access Management Team",
 }
 
 # ── Thresholds ────────────────────────────────────────────────────────────────
-CONFIDENCE_THRESHOLD  = 0.90   # below this → escalate (human review)
-AUTOMATION_THRESHOLD  = 5      # similar_ticket_count > this → suggest automation
+CONFIDENCE_THRESHOLD = 0.90  # below this → escalate (human review)
+AUTOMATION_THRESHOLD = 5  # similar_ticket_count > this → suggest automation
 
 
 async def routing_node(state: TicketAgentState) -> TicketAgentState:
     """Node 4: Confidence-based routing with automated-answer for repeat issues."""
     try:
-        category   = state.get("category", "Application")
-        priority   = (state.get("priority") or "medium").lower()
+        category = state.get("category", "Application")
+        priority = (state.get("priority") or "medium").lower()
         embed_conf = float(state.get("embedding_confidence", 0.7))
         similar_count = int(state.get("similar_ticket_count", 0))
-        repeat_issue  = bool(state.get("repeat_issue", False))
+        repeat_issue = bool(state.get("repeat_issue", False))
 
         # ── Step 1: Get LLM routing decision ─────────────────────────────
-        llm_decision = await routing_decision({
-            "category":          category,
-            "sub_category":      state.get("sub_category"),
-            "priority":          priority,
-            "summary":           state.get("ai_summary", ""),
-            "kb_solution_found": bool(state.get("kb_results")),
-            "sentiment":         state.get("sentiment", "neutral"),
-            "similar_count":     similar_count,
-        })
-        llm_conf  = float(llm_decision.get("confidence", 0.7))
-        llm_route = llm_decision.get("route_to", "L1")
+        llm_decision = await routing_decision(
+            {
+                "category": category,
+                "sub_category": state.get("sub_category"),
+                "priority": priority,
+                "summary": state.get("ai_summary", ""),
+                "kb_solution_found": bool(state.get("kb_results")),
+                "sentiment": state.get("sentiment", "neutral"),
+                "similar_count": similar_count,
+            }
+        )
+        llm_conf = float(llm_decision.get("confidence", 0.7))
+        _llm_route = llm_decision.get("route_to", "L1")
 
         # ── Step 2: Combine confidence signals ────────────────────────────
         # If embedding confidence was not computed (e.g. BGE unavailable), use LLM only
@@ -91,37 +94,42 @@ async def routing_node(state: TicketAgentState) -> TicketAgentState:
         #             Critical (already caught by Rule 1)
         # ─────────────────────────────────────────────────────────────────────
         if priority == "critical":
-            route  = "escalate"
+            route = "escalate"
             reason = (
                 f"🚨 ESCALATED — critical priority ticket. "
                 f"Routed to {state['assigned_department']} for immediate human review."
             )
 
-        elif combined_conf >= CONFIDENCE_THRESHOLD or similar_count >= AUTOMATION_THRESHOLD:
+        elif (
+            combined_conf >= CONFIDENCE_THRESHOLD
+            or similar_count >= AUTOMATION_THRESHOLD
+        ):
             if similar_count >= AUTOMATION_THRESHOLD:
-                route  = "automated_answer"
+                route = "automated_answer"
                 reason = (
                     f"⚡ AUTOMATED RESPONSE — high repetition detected ({similar_count} similar tickets). "
                     f"Generating answer from past resolutions. No human needed."
                 )
             elif repeat_issue and similar_count > 0:
-                route  = "automated_answer"
+                route = "automated_answer"
                 reason = (
                     f"⚡ AUTOMATED RESPONSE — confidence {combined_conf:.2f} ≥ {CONFIDENCE_THRESHOLD} "
                     f"AND {similar_count} similar past tickets found. "
                     f"Generating answer from past resolutions. No human needed."
                 )
             else:
-                route  = "auto_resolve"
+                route = "auto_resolve"
                 reason = (
                     f"✅ AUTO-RESOLVE — confidence {combined_conf:.2f} ≥ {CONFIDENCE_THRESHOLD}. "
                     f"AI solution is sufficiently reliable. Sending to user automatically."
                 )
-            logger.info(f"[NODE] routing_node: {route.upper()} (conf={combined_conf:.2f} ≥ {CONFIDENCE_THRESHOLD})")
+            logger.info(
+                f"[NODE] routing_node: {route.upper()} (conf={combined_conf:.2f} ≥ {CONFIDENCE_THRESHOLD})"
+            )
 
         else:
             # confidence < 0.90 → human review
-            route  = "escalate"
+            route = "escalate"
             reason = (
                 f"👤 HUMAN REVIEW — confidence {combined_conf:.2f} < {CONFIDENCE_THRESHOLD}. "
                 f"Model is not certain enough. Escalate to {state['assigned_department']} for human intervention."
@@ -132,7 +140,7 @@ async def routing_node(state: TicketAgentState) -> TicketAgentState:
             )
 
         state["routing_decision"] = route
-        state["routing_reason"]   = reason
+        state["routing_reason"] = reason
 
         # ── Step 5: Automation suggestion ────────────────────────────────
         if repeat_issue and combined_conf >= CONFIDENCE_THRESHOLD:
@@ -143,9 +151,9 @@ async def routing_node(state: TicketAgentState) -> TicketAgentState:
                 f"Recommend creating a runbook or automation script for: {category}."
             )
         else:
-            state["suggest_automation"]   = False
+            state["suggest_automation"] = False
             state["automation_candidate"] = False
-            state["automation_reason"]    = None
+            state["automation_reason"] = None
 
         state["steps"].append(
             f"routed:{route} dept:{state['assigned_department']} "
@@ -158,7 +166,7 @@ async def routing_node(state: TicketAgentState) -> TicketAgentState:
 
     except Exception as e:
         logger.error(f"[NODE] routing_node failed: {e}", exc_info=True)
-        state["routing_decision"]   = "L1"
+        state["routing_decision"] = "L1"
         state["routing_confidence"] = 0.5
         state["suggest_automation"] = False
         state["automation_candidate"] = False

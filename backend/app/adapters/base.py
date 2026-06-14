@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any
 from app.schemas.ticket import UniversalTicket
 
+
 class BaseAdapter(ABC):
     """Abstract base class for all omnichannel source adapters."""
 

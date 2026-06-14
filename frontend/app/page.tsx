@@ -1,23 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
-import axios from "axios";
+import { api, clearToken } from "@/lib/api";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
-const API = "/api/proxy";
 const COLORS = ["#6366f1", "#22d3ee", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6"];
-
-// BUG-07 FIX: Cache token in sessionStorage to avoid re-login on every render
-async function getToken(): Promise<string> {
-  const cached = sessionStorage.getItem("auth_token");
-  if (cached) return cached;
-  const r = await axios.post(`${API}/auth/login`, {
-    email: "admin@company.com",
-    password: "Admin@1234",
-  });
-  const token: string = r.data.access_token;
-  sessionStorage.setItem("auth_token", token);
-  return token;
-}
 
 export default function Dashboard() {
   const [summary, setSummary] = useState<any>(null);
@@ -27,22 +13,9 @@ export default function Dashboard() {
   useEffect(() => {
     (async () => {
       try {
-        const token = await getToken();
-        const h = { Authorization: `Bearer ${token}` };
-        const s = await axios.get(`${API}/analytics/summary`, { headers: h });
-        setSummary(s.data);
+        const data = await api.get("/analytics/summary");
+        setSummary(data);
       } catch (e: any) {
-        // If token is expired/invalid, clear it and retry once
-        if (e?.response?.status === 401) {
-          sessionStorage.removeItem("auth_token");
-          try {
-            const token = await getToken();
-            const h = { Authorization: `Bearer ${token}` };
-            const s = await axios.get(`${API}/analytics/summary`, { headers: h });
-            setSummary(s.data);
-            return;
-          } catch {/* fall through to setError */}
-        }
         setError(e?.response?.data?.detail || e.message);
       } finally {
         setLoading(false);

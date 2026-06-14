@@ -8,6 +8,7 @@ Generates an AI solution using:
 If the ticket is an automated_answer (high confidence + repeat issue),
 the solution is built primarily from past resolutions.
 """
+
 from __future__ import annotations
 import logging
 
@@ -20,16 +21,16 @@ logger = logging.getLogger(__name__)
 async def resolution_node(state: TicketAgentState) -> TicketAgentState:
     """Node 5: Generate AI solution using KB articles + past similar tickets."""
     try:
-        kb_articles     = state.get("kb_results", [])
+        kb_articles = state.get("kb_results", [])
         similar_tickets = state.get("similar_tickets", [])
-        automated       = state.get("routing_decision") == "automated_answer"
+        automated = state.get("routing_decision") == "automated_answer"
 
         solution = await generate_solution(
-            title           = state["title"],
-            description     = state["description"],
-            kb_articles     = kb_articles,
-            similar_tickets = similar_tickets,
-            automated       = automated,
+            title=state["title"],
+            description=state["description"],
+            kb_articles=kb_articles,
+            similar_tickets=similar_tickets,
+            automated=automated,
         )
 
         state["suggested_solution"] = solution

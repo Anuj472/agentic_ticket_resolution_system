@@ -1,8 +1,11 @@
-﻿from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import model_validator
 from functools import lru_cache
 from typing import List
 import json
+import warnings
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
@@ -14,8 +17,12 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:80"
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://ticket_user:ticket_pass@postgres:5432/ticket_db"
-    DATABASE_SYNC_URL: str = "postgresql://ticket_user:ticket_pass@postgres:5432/ticket_db"
+    DATABASE_URL: str = (
+        "postgresql+asyncpg://ticket_user:ticket_pass@postgres:5432/ticket_db"
+    )
+    DATABASE_SYNC_URL: str = (
+        "postgresql://ticket_user:ticket_pass@postgres:5432/ticket_db"
+    )
     # Redis
     REDIS_URL: str = "redis://:redis_pass@redis:6379/0"
     CELERY_BROKER_URL: str = "redis://:redis_pass@redis:6379/1"
@@ -51,13 +58,35 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
+
     @property
     def allowed_origins_list(self) -> List[str]:
         v = self.ALLOWED_ORIGINS.strip()
         if v.startswith("["):
             return json.loads(v)
         return [x.strip() for x in v.split(",") if x.strip()]
+
+    @model_validator(mode="after")
+    def _warn_insecure_defaults(self):
+        """Warn if critical secrets are left at their insecure defaults."""
+        if self.APP_SECRET_KEY in ("changeme-in-production", ""):
+            if self.APP_ENV == "production":
+                raise ValueError(
+                    "APP_SECRET_KEY must be changed from its default in production! "
+                    "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+                )
+            warnings.warn(
+                "APP_SECRET_KEY is set to its insecure default. "
+                "This is acceptable for development but MUST be changed in production.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return self
+
+
 @lru_cache()
 def get_settings() -> Settings:
     return Settings()
+
+
 settings = get_settings()

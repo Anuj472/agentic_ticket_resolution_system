@@ -4,8 +4,17 @@ from app.models.knowledge_base import KBArticle, AgentGroup
 from app.models.audit import AuditLog, AgentExecution, Comment, Attachment
 
 __all__ = [
-    "User", "UserRole", "UserStatus",
-    "Ticket", "TicketStatus", "TicketPriority", "TicketChannel",
-    "KBArticle", "AgentGroup",
-    "AuditLog", "AgentExecution", "Comment", "Attachment",
+    "User",
+    "UserRole",
+    "UserStatus",
+    "Ticket",
+    "TicketStatus",
+    "TicketPriority",
+    "TicketChannel",
+    "KBArticle",
+    "AgentGroup",
+    "AuditLog",
+    "AgentExecution",
+    "Comment",
+    "Attachment",
 ]
